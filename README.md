@@ -56,7 +56,7 @@ the current year's data until the next default run.)
 | `backtest.py` | Walk-forward backtest: validation year for choices, untouched test year |
 | `evaluate.py` | MAE, RMSE, bias, relative MAE, Diebold-Mariano test |
 | `battery.py` | Battery value of a forecast (linear-program schedule, capture rate) |
-| `forecast.py` | Command line forecast of one delivery day |
+| `forecast.py` | Command line forecast of one delivery day (uses the round-2 model) |
 | `experiments.py` | Round 2: pre-registered hypotheses (`docs/round2_hypotheses.md`) |
 | `plots.py` | Charts used in the notebook |
 
