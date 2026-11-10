@@ -1,6 +1,6 @@
 """Round 2: pre-registered hypotheses, decided on the validation year, then one more test-year run.
 
-    python -m gb_da_forecast.experiments            # writes results/round2_* (1-3 hours)
+    python -m gb_da_forecast.experiments            # writes results/round2_* (20-60 min, machine-dependent)
     python -m gb_da_forecast.experiments --smoke    # 1-month check of the machinery, no test year
 
 The hypotheses and every decision rule applied here are written in docs/round2_hypotheses.md, which

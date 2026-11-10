@@ -46,6 +46,14 @@ here with the rules below, **fixed before any round-2 result was seen** (this fi
 Recorded in `results/round2_*.csv` and summarised below after the run. (Everything above this heading
 is unchanged from the pre-registered version.)
 
+Two corrections to the pre-registered text, left as written above so the record stays intact:
+
+- It says round 1 "ran the test year once". Round 1 scored the test year twice (a bug in the imbalance
+  inputs was fixed between the two runs, see the README), so the round-2 run below is the third.
+- The evidence for H3 (bias in 10 of 13 test months) and H5 (the average's 94.2% battery capture) comes
+  from the test year. The hypotheses were therefore partly prompted by test results; the decisions
+  below used only the validation year.
+
 ### Validation year (each change vs B0: MAE £9.12, battery capture 93.3%)
 
 | Change | MAE change | Battery capture change | Rule met? |
@@ -72,7 +80,10 @@ battery capture was 93.9% at 60% trees (+0.7 pp) but with MAE 6.1% worse; at 90%
 | Round-1 headline | 10.27 | 92.9% | 199 |
 | **Round-2 model (round 1 without imbalance inputs)** | **10.34** | 93.0% | 199 |
 
-Diebold-Mariano, round 2 vs round 1: p = 0.32 (no detectable difference); vs naive: p < 0.0001.
+Diebold-Mariano, round 2 vs round 1: p = 0.32 (no detectable difference); vs naive: p < 0.0001; vs the
+round-1 average of Lasso and trees (MAE 10.69, battery capture 94.2%): p = 0.07, so the round-2 model's
+MAE advantage over the average is weaker than round 1's (p = 0.03), and the average captures more
+battery value.
 
 ### Conclusions
 
@@ -81,8 +92,10 @@ Diebold-Mariano, round 2 vs round 1: p = 0.32 (no detectable difference); vs nai
 - The 2021-22 crisis years are worth training on (dropping them made things worse): in price / gas
   terms they still teach the model useful patterns.
 - The imbalance inputs can be dropped with no loss of accuracy, removing the messiest data source.
-- H3 failing prompted a follow-up on the low bias (about -£2/MWh): it is not the model lagging the
-  market. On test days when gas rose by more than 3% after the model's gas input (gas day D-3, 7-day
-  mean), forecasts were £3.9/MWh too low on average, against £0.5 when gas fell. The bias comes mainly
-  from the gas input's lag in a rising market (plus some right-skew from spikes), so the remedy is
-  fresher gas data, not a modelling change.
+- H3 failing prompted a follow-up on the low bias (about -£2/MWh). On test days when gas rose by more
+  than 3% after the model's gas input (gas day D-3, 7-day mean), forecasts were £3.9/MWh too low on
+  average, against £0.5 when gas fell. Re-running the round-2 model with a gas price with no lag at all
+  (not available in practice) cut the bias from -£2.2 to -£1.1 and the MAE from £10.2 to £9.9. So the
+  gas input's lag in a rising market explains about half of the bias; the other half remains on days
+  when gas barely moved (-£1.7) and is not explained by it. Fresher gas data would help, but it is not
+  the whole remedy.
