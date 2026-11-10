@@ -26,6 +26,8 @@ Target forms (``target``):
 
 from __future__ import annotations
 
+import datetime as dt
+
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
@@ -132,19 +134,41 @@ GBM_DEFAULTS = dict(
 
 
 class GBMModel:
-    """Gradient-boosted trees: hundreds of small trees, each correcting the errors of the previous ones."""
+    """Gradient-boosted trees: hundreds of small trees, each correcting the errors of the previous ones.
 
-    def __init__(self, features: list[str], target: str = "raw", **params):
+    Optional training choices (round-2 hypotheses H3 and H6):
+        half_life_days  weight training rows by recency: a delivery day this many days older than the
+                        newest training day counts half as much (None = all rows count equally).
+        train_start     ignore training rows before this delivery day (None = use all history).
+    """
+
+    def __init__(
+        self,
+        features: list[str],
+        target: str = "raw",
+        half_life_days: float | None = None,
+        train_start: dt.date | None = None,
+        **params,
+    ):
         self.features = features
         self.target = target
+        self.half_life_days = half_life_days
+        self.train_start = train_start
         self.params = {**GBM_DEFAULTS, **params}
         self.model: HistGradientBoostingRegressor | None = None
 
     def fit(self, train: pd.DataFrame) -> "GBMModel":
         train = train[train["price"].notna()]
+        days = pd.to_datetime(train["delivery_day"])
+        if self.train_start is not None:
+            train, days = train[days >= pd.Timestamp(self.train_start)], days[days >= pd.Timestamp(self.train_start)]
+        weights = None
+        if self.half_life_days:
+            age_days = (days.max() - days).dt.days.to_numpy()
+            weights = 0.5 ** (age_days / self.half_life_days)
         X, y = to_model_units(train, self.features, self.target)
         self.model = HistGradientBoostingRegressor(early_stopping=False, random_state=0, **self.params)
-        self.model.fit(X, y)
+        self.model.fit(X, y, sample_weight=weights)
         return self
 
     def predict(self, df: pd.DataFrame) -> np.ndarray:
@@ -153,10 +177,11 @@ class GBMModel:
 
 
 class AverageModel:
-    """Equal-weight average of several models' forecasts (forecast combination)."""
+    """Weighted average of several models' forecasts (forecast combination); equal weights by default."""
 
-    def __init__(self, *models):
+    def __init__(self, *models, weights: list[float] | None = None):
         self.models = models
+        self.weights = weights
 
     def fit(self, train: pd.DataFrame) -> "AverageModel":
         for m in self.models:
@@ -164,4 +189,4 @@ class AverageModel:
         return self
 
     def predict(self, df: pd.DataFrame) -> np.ndarray:
-        return np.mean([m.predict(df) for m in self.models], axis=0)
+        return np.average([m.predict(df) for m in self.models], axis=0, weights=self.weights)

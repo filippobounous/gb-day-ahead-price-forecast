@@ -42,6 +42,7 @@ FUNDAMENTALS = [
 ]
 GAS = ["gas_sap", "gas_ref"]
 PRICE_LAGS = ["p_d1", "p_d2", "p_d7", "p_d1_mean", "p_d1_min", "p_d1_max", "p_d1_last"]
+D1_SHAPE = [f"p_d1_h{h:02d}" for h in range(24)]  # every hour of delivery day D-1 (round-2 H4)
 CONTINENTAL = ["cont_fr_d1", "cont_nl_d1", "cont_be_d1", "cont_no2_d1", "cont_dk1_d1", "cont_de_d1"]
 IMBALANCE = ["imb_price_24h", "imb_price_24h_max", "imb_niv_24h"]
 GEN_MIX = ["gen_interconnect_24h", "gen_ccgt_24h", "gen_wind_24h", "gen_nuclear_24h"]
@@ -51,12 +52,13 @@ FEATURE_GROUPS = {
     "fundamentals": FUNDAMENTALS,
     "gas": GAS,
     "price_lags": PRICE_LAGS,
+    "d1_shape": D1_SHAPE,
     "continental": CONTINENTAL,
     "imbalance": IMBALANCE,
     "gen_mix": GEN_MIX,
 }
 # Columns measured in money: divided by the gas price when the model works in "units of gas".
-PRICE_LIKE = PRICE_LAGS + CONTINENTAL + ["imb_price_24h", "imb_price_24h_max"]
+PRICE_LIKE = PRICE_LAGS + D1_SHAPE + CONTINENTAL + ["imb_price_24h", "imb_price_24h_max"]
 
 
 def _hour_grid(first_day: dt.date, last_day: dt.date) -> pd.DataFrame:
@@ -143,6 +145,10 @@ def _price_lags(df: pd.DataFrame) -> pd.DataFrame:
         keys = pd.MultiIndex.from_arrays([shifted(k), out["hour"]])
         out[f"p_d{k}"] = by_hour.reindex(keys).to_numpy()
     d1 = shifted(1)
+    shape = by_hour.unstack("hour").reindex(columns=range(24))  # one row per delivery day, 24 hours
+    shape_d1 = shape.reindex(d1.to_numpy())
+    for h, col in enumerate(D1_SHAPE):
+        out[col] = shape_d1[h].to_numpy()  # the spring clock-change day has no 01:00 -> missing
     out["p_d1_mean"] = d1.map(daily["mean"])
     out["p_d1_min"] = d1.map(daily["min"])
     out["p_d1_max"] = d1.map(daily["max"])

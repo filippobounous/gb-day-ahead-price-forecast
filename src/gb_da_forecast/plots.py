@@ -248,6 +248,33 @@ def battery_capture(summary: pd.DataFrame, models: list[str]):
     return fig
 
 
+def hypothesis_effects(table: pd.DataFrame):
+    """Round 2: change in validation MAE for each single change vs the round-1 baseline (left = better)."""
+    d = table.drop(index=[i for i in table.index if i.startswith("B0")]).iloc[::-1]
+    fig, ax = plt.subplots(figsize=(9, 0.6 + 0.42 * len(d)))
+    y = np.arange(len(d))
+    colours = [SERIES[2] if a else GRID for a in d["adopted"].astype(bool)]
+    ax.barh(y, d["mae_change_pct"], color=colours, height=0.6, edgecolor=TEXT_2, linewidth=0.4)
+    ax.axvline(0, color=TEXT_2, linewidth=0.8)
+    ax.axvline(-1, color=TEXT_2, linewidth=0.8, linestyle=":")
+    for yi, (mae, cap) in zip(y, d[["mae_change_pct", "capture_change_pp"]].to_numpy()):
+        ax.annotate(f"{mae:+.1f}% MAE, {cap:+.1f} pp battery", (max(mae, 0), yi), xytext=(6, 0),
+                    textcoords="offset points", va="center", color=TEXT_2, fontsize=8)
+    names = [f"{n}  [adopted]" if a else n for n, a in zip(d.index, d["adopted"].astype(bool))]
+    ax.set_yticks(y, names)
+    for tick, a in zip(ax.get_yticklabels(), d["adopted"].astype(bool)):
+        if a:
+            tick.set_fontweight("bold")
+    ax.set_xlabel("Change in validation MAE vs round-1 model (%); dotted line = the 1% adoption threshold")
+    ax.grid(axis="x")
+    ax.grid(axis="y", visible=False)
+    lo = min(-2.0, float(d["mae_change_pct"].min()) - 0.5)
+    ax.set_xlim(lo, max(2.0, float(d["mae_change_pct"].max())) + 3.5)
+    ax.set_title("Round 2: effect of each change (validation year)")
+    fig.tight_layout()
+    return fig
+
+
 def importance(imp: pd.DataFrame, top: int = 15):
     d = imp.head(top).iloc[::-1]
     fig, ax = plt.subplots(figsize=(8, 0.4 + 0.32 * len(d)))

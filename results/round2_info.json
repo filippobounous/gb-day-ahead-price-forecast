@@ -1,0 +1,59 @@
+{
+  "plan": "docs/round2_hypotheses.md",
+  "validation_period": [
+    "2024-11-01",
+    "2025-10-31"
+  ],
+  "baseline": {
+    "groups": [
+      "calendar",
+      "fundamentals",
+      "gas",
+      "price_lags",
+      "continental",
+      "imbalance",
+      "gen_mix"
+    ],
+    "target": "ratio",
+    "params": {
+      "loss": "absolute_error",
+      "learning_rate": 0.05,
+      "max_iter": 600,
+      "max_leaf_nodes": 63,
+      "min_samples_leaf": 40
+    },
+    "half_life_days": null,
+    "train_start": null
+  },
+  "adopted_single_changes": {
+    "H1": "H1 drop imbalance"
+  },
+  "final_trees": "H1 drop imbalance",
+  "final_spec": {
+    "groups": [
+      "calendar",
+      "fundamentals",
+      "gas",
+      "price_lags",
+      "continental",
+      "gen_mix"
+    ],
+    "target": "ratio",
+    "params": {
+      "loss": "absolute_error",
+      "learning_rate": 0.05,
+      "max_iter": 600,
+      "max_leaf_nodes": 63,
+      "min_samples_leaf": 40
+    },
+    "half_life_days": null,
+    "train_start": null
+  },
+  "blend_weight_on_trees": null,
+  "headline": "round2_trees",
+  "test_period": [
+    "2025-11-01",
+    "2026-11-10"
+  ],
+  "runtime_minutes": 19.2
+}
