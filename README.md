@@ -3,6 +3,24 @@
 Forecasting the hourly GB day-ahead auction price for every hour of delivery day D, as it would
 be done at 09:00 UK time on D-1, 20 minutes before the EPEX 60-minute auction (DA1) closes at 09:20.
 
+## Read this first: the target is N2EX, standing in for EPEX DA1
+
+The brief asks for the EPEX morning auction (DA1). EPEX sells its price history and no open source
+republishes it, so the models are trained and scored on the **N2EX (Nord Pool) GB hourly day-ahead
+auction price**, which NESO publishes for free.
+
+- **What is the same:** the product (hourly, pay-as-clear), the delivery day (23:00-23:00 UK), the
+  participants and the fundamentals. N2EX closes at 09:50, half an hour after EPEX's 09:20, and
+  EPEX's results are out (from about 09:30) before N2EX closes, so N2EX bidders can anchor on them.
+- **What differs:** the two exchanges have separate order books, and since October 2021 the N2EX
+  auction is implicitly coupled with Norway's NO2 zone through the North Sea Link cable, while EPEX
+  DA1 is not. The prices should be close but are not identical.
+- **What is not known:** the size of the gap. It cannot be measured without EPEX data, so every
+  accuracy figure below is for N2EX.
+- **What changes with EPEX data:** only the loader (`data/neso.py::collect_n2ex`). The forecast
+  time (09:00 on D-1) was already chosen for the EPEX gate, and no input depends on the target's
+  exchange. The first steps would be to measure the N2EX-EPEX gap and re-run the backtest.
+
 ## Setup
 
 ```bash
@@ -69,7 +87,7 @@ Example: delivery day **D = Wednesday 11 Nov 2026** (winter, so UK time = UTC). 
 | **Tue 10 Nov, 09:00** | **Cutoff: we forecast all 24 hourly prices of Wed 11 Nov** |
 | Tue 10 Nov, 09:20 | EPEX DA1 gate closes for Wed 11 Nov |
 | Tue 10 Nov, 09:50 | N2EX gate closes for Wed 11 Nov; results by ~10:00 |
-| Tue 10 Nov, ~11:00 | Continental day-ahead auction for Wed 11 Nov (00:00-24:00 CET = 23:00 Tue to 23:00 Wed UK) |
+| Tue 10 Nov, 11:00 | Continental day-ahead auction for Wed 11 Nov closes (00:00-24:00 CET = 23:00 Tue to 23:00 Wed UK); results by ~12:00 |
 | Tue 23:00 to Wed 23:00 | Delivery |
 
 In each auction, participants submit for every hour how much they would buy or sell at each price
@@ -90,7 +108,7 @@ data after Brexit). The target is therefore the **N2EX GB hourly day-ahead aucti
 NESO republishes for free from delivery day 21 Sep 2021. It is the other GB hourly day-ahead
 auction: same product and delivery hours, pay-as-clear, closing at 09:50 instead of 09:20. Both
 auctions clear against the same fundamentals half an hour apart, so their prices should be close,
-but the gap cannot be measured without EPEX data. The code is target-agnostic: swapping in EPEX
+but the gap cannot be measured without EPEX data (see "Read this first" above for the differences). The code is target-agnostic: swapping in EPEX
 DA1 history only changes the loader.
 
 Established from the data (`python -m gb_da_forecast.data.check`):
@@ -147,7 +165,7 @@ delivery day 2 Mar 2023 (23:00 1 Mar to 23:00 2 Mar UTC):
 | N2EX (target) | Hourly day-ahead price | Lagged prices | Delivery days up to and including D-1 (cleared on D-2) |
 | Elexon `FUELHH`, `MID`; PV_Live | Generation mix and interconnector flows, short-term traded price, solar outturn | Lagged context | Up to ~08:30 on D-1 |
 | Elexon system prices | Imbalance price | Lagged context | Only periods whose stored version was published by the cutoff: ~1 h old before 2024, ~25 h from 2024 (stored values are a later settlement run) |
-| energy-charts | FR, NL, BE, NO2, DK1 (+ DE-LU) day-ahead prices | Lagged context | Delivery days up to D-1 (they clear ~11:00 UK, after GB's auction) |
+| energy-charts | FR, NL, BE, NO2, DK1 (+ DE-LU) day-ahead prices | Lagged context | Delivery days up to D-1 (their auction closes 11:00 UK with results by ~12:00, after GB's auctions) |
 | Open-Meteo | Weather at 9 onshore and offshore points | Exploration only | Not as-of: see below |
 
 ### Gas price
@@ -162,7 +180,9 @@ SAP is a realised price for a whole gas day (05:00-05:00 UK). At the 09:00 D-1 c
 
 D-3 is chosen because it was guaranteed to be known, at the cost of being a day older. In our data
 the correlation between the daily average power price of D and SAP is 0.896 using gas day D-2 and
-0.869 using D-3, so D-2 is reported as a sensitivity check. Gas usually moves little from day to day
+0.869 using D-3. As a sensitivity check the two price / gas models were re-run on the test year with
+gas day D-2: the trees' MAE is £10.17 instead of £10.27 and the Lasso's £12.86 instead of £12.87, so
+the safe choice costs very little. Gas usually moves little from day to day
 (median change £0.9/MWh) but occasionally jumps (10% of days move by more than £5.7/MWh).
 
 Traders would use the **day-ahead gas price** (traded on D-1 for gas day D), which looks forward
@@ -181,7 +201,8 @@ rather than back, but that series is not freely available; past SAP is the proxy
   delivery day Wed 11 Nov, the target itself (two hours in summer). Taking "all rows labelled
   Tuesday" as yesterday's prices would leak part of the answer, so every price is tagged with its
   delivery day.
-- **Elexon's day-ahead wind and solar forecast (`DGWS`) is published ~16:45**, after the auction,
+- **Elexon's day-ahead wind and solar forecast (`DGWS`) is published at 16:45 UTC** (17:45 UK time
+  in summer), after the auction,
   so it is not used. **Continental day-ahead prices clear after GB's DA1**, so only earlier days
   are usable.
 - **Open-Meteo's historical forecast archive** is built from the first hours of each model run,
@@ -201,8 +222,8 @@ rather than back, but that series is not freely available; past SAP is the proxy
 - **No free daily carbon (UKA) price.** Daily UK ETS allowance prices come from ICE futures and are
   licensed (e.g. via Montel or Argus). GOV.UK does publish the fortnightly UK ETS auction clearing
   prices [3], which could be added as a coarse series; carbon also has a fixed £18/t Carbon Price
-  Support and a £22/t auction reserve price [4]. Carbon is a smaller part of a gas plant's marginal
-  cost than fuel: at ~0.37 tCO2/MWh and, say, £40/t + £18/t, it adds ~£21/MWh, against ~£174/MWh of
+  Support and a £28/t auction reserve price (since April 2026) [4]. Carbon is a smaller part of a gas
+  plant's marginal cost than fuel: at ~0.37 tCO2/MWh and, say, £55/t + £18/t, it adds ~£27/MWh, against ~£174/MWh of
   fuel at the latest SAP (£87/MWh of gas, 50% efficiency). Slow carbon drifts are absorbed by
   regular retraining.
 - **Gas is the main price driver.** Gas set the GB power price about 84% of the time in recent years
@@ -240,7 +261,7 @@ A ladder from simple to flexible; each rung must beat the one below to justify i
 | Model | How it works | Pros | Cons |
 |---|---|---|---|
 | Naive baselines | Same hour yesterday; same hour last week; yesterday x gas change | Free, hard to beat, the standard bar | Ignore weather and demand |
-| Lasso (one per hour) | Weighted sum of inputs; the penalty sets useless weights to zero | Readable, fast; a simplified version of the field's "LEAR" benchmark [8, 9] | Straight lines only |
+| Lasso (one per hour) | Weighted sum of inputs; the penalty sets useless weights to zero | Readable, fast; a simplified version of the field's "LEAR" benchmark (introduced in [17], named in [9]; [8] uses similar models) | Straight lines only |
 | Gradient-boosted trees | Hundreds of small if-then trees, each correcting the previous ones | Learns the merit-order bend and interactions; handles missing inputs; strongest on tabular data [10, 11] | Cannot extrapolate beyond the training range |
 | Average | Mean of the best Lasso and best trees | Combining forecasts often beats each | Less readable |
 
@@ -272,7 +293,7 @@ delivery days before it.
 |---|---|---|
 | Sept 2021 - Oct 2024 | Training only | - |
 | Validation year (Nov 2024 - Oct 2025) | Every choice: optional inputs, tree settings, headline model | Every 3 months |
-| Test year (Nov 2025 - latest day) | Final evaluation, choices frozen, touched once | Every month |
+| Test year (Nov 2025 - latest day) | Final evaluation, choices frozen beforehand | Every month |
 
 Metrics: MAE, RMSE, bias, MAE relative to the naive "same hour yesterday" forecast, a Diebold-Mariano
 test [16] for whether differences are larger than chance, and the **battery value**: a 5 kW / 10 kWh
@@ -298,9 +319,14 @@ retrained monthly, all choices frozen on the validation year (`results/`, explai
 | Average of Lasso and trees | 10.69 | 15.72 | 49% better | 94.2% | 202 |
 | Perfect foresight | - | - | - | 100% | 214 |
 
-- The headline model was chosen on the validation year (MAE £9.12 vs naive £19.16) before the test
-  year was touched; on the test year its MAE advantage is statistically significant over every other
+- The headline model was chosen on the validation year (MAE £9.12 vs naive £19.16) by a rule fixed
+  in advance (lowest validation MAE); on the test year its MAE advantage is statistically significant over every other
   model (Diebold-Mariano: p < 0.001, and p = 0.03 against the average of Lasso and trees).
+- The backtest was run twice. After the first run a code review found a bug in the imbalance inputs
+  (some 24-hour windows were months stale); it was fixed and the whole backtest re-run. No choice was
+  made from test results and the selection rule did not change, but the test year has been seen
+  twice: the headline moved from £10.37 to £10.27, and the validation year then picked different tree
+  settings. Differences of a few tenths of a pound between models are within this noise.
 - Price / gas beats raw price in both model families, as the merit-order economics suggested.
 - On the validation year, tree settings, input groups and target form each moved the MAE by similar,
   modest amounts (up to £0.3-1.0, £0.6 and £0.3/MWh respectively). All optional input groups were kept
@@ -335,3 +361,4 @@ data revisions; DA2 and imbalance forecasting as extensions).
 14. California Public Utilities Commission (2019), *Implied Market Heat Rate and Electric Cost Overcharge in 2018*. https://www.cpuc.ca.gov/-/media/cpuc-website/files/uploadedfiles/cpucwebsite/content/news_room/newsupdates/2019/imhr-and-surplus-cost-analysis-6-17-2019-v2-.pdf
 15. Uniejewski, Weron & Ziel (2018), *Variance stabilizing transformations for electricity spot price forecasting*, IEEE Transactions on Power Systems.
 16. Diebold & Mariano (1995), *Comparing predictive accuracy*, Journal of Business & Economic Statistics 13(3), 253-263.
+17. Uniejewski, Nowotarski & Weron (2016), *Automated variable selection and shrinkage for day-ahead electricity price forecasting*, Energies 9(8), 621.

@@ -7,7 +7,7 @@ Protocol, so that the reported test results are honest:
   validation year  1 Nov 2024 - 31 Oct 2025. Used to make every choice: which optional input
                    groups to keep, the boosted trees' settings, and which model is the headline.
                    Models are retrained every 3 months here (to keep tuning fast).
-  test year        1 Nov 2025 - latest delivery day. Touched once, with the choices frozen.
+  test year        1 Nov 2025 - latest delivery day. Evaluated with the choices frozen.
                    Models are retrained every month on all delivery days before that month.
 
 At every step a model is trained only on delivery days before the period it forecasts, and its

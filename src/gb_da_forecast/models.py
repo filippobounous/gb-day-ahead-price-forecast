@@ -7,8 +7,8 @@ the 09:00 D-1 cutoff, so a model can never see the future through its inputs.
     NaiveModel   no learning: copy an earlier price ("same hour yesterday", "same hour last week",
                  "yesterday scaled by the change in gas"). The bar every model must clear.
     LassoModel   linear regression with a Lasso penalty, one model per hour of the day. A simplified
-                 version of the "LEAR" benchmark of the price-forecasting literature (Ziel & Weron
-                 2018, Lago et al. 2021), which additionally uses asinh-transformed prices, all 24
+                 version of the "LEAR" benchmark of the price-forecasting literature (Uniejewski et
+                 al. 2016; named by Lago et al. 2021), which additionally uses asinh-transformed prices, all 24
                  hourly prices of several past days and multiple training windows. Readable: every
                  input gets one weight.
     GBMModel     gradient-boosted decision trees (scikit-learn's HistGradientBoostingRegressor,

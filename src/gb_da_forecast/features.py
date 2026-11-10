@@ -151,7 +151,7 @@ def _price_lags(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _continental(df: pd.DataFrame) -> pd.DataFrame:
-    """Day-ahead prices of delivery day D-1 at the same hour (they clear ~11:00 UK on D-2)."""
+    """Day-ahead prices of delivery day D-1 at the same hour (their auction closes 11:00 UK on D-2)."""
     cont = load("continental_prices")
     hourly = cont.groupby(["zone", cont["start_utc"].dt.floor("h")])["price_eur_mwh"].mean().reset_index()
     hourly["delivery_day"] = delivery_day_of(hourly["start_utc"])

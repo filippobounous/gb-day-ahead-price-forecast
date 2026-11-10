@@ -7,8 +7,8 @@
     bank_holidays       UK bank holidays per nation (gov.uk), 2019 onwards.
     continental_prices  Day-ahead prices of zones linked to GB by interconnectors (FR, NL, BE, NO2,
                         DK1), plus DE-LU as the main continental reference market (no direct GB link
-                        yet). From energy-charts.info (CC BY 4.0). They clear at about 11:00 UK time,
-                        after the GB 09:20 auction, so only earlier days can be used as features.
+                        yet). From energy-charts.info (CC BY 4.0). Their auction closes at 11:00 UK time
+                        (results by ~12:00), after the GB 09:20 auction, so only earlier days can be used as features.
                         15-minute resolution from Oct 2025.
     weather             Hourly weather for a few onshore and offshore points (Open-Meteo historical
                         forecast API, free for non-commercial use). NOT safe as a feature: the archive
