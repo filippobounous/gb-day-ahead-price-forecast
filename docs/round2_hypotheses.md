@@ -43,4 +43,46 @@ here with the rules below, **fixed before any round-2 result was seen** (this fi
 
 ## Results
 
-Recorded in `results/round2_*.csv` and summarised below after the run.
+Recorded in `results/round2_*.csv` and summarised below after the run. (Everything above this heading
+is unchanged from the pre-registered version.)
+
+### Validation year (each change vs B0: MAE £9.12, battery capture 93.3%)
+
+| Change | MAE change | Battery capture change | Rule met? |
+|---|---|---|---|
+| H1 drop imbalance inputs | +0.0% | -0.1 pp | **Yes (simplification): adopted** |
+| H2a 127 leaves | -0.2% | +0.4 pp | No (< 1%) |
+| H2b 255 leaves | +0.1% | +0.1 pp | No |
+| H2c 1,200 trees | -0.4% | +0.1 pp | No (< 1%) |
+| H2d 127 leaves + 1,200 trees | -0.6% | +0.3 pp | No (< 1%) |
+| H3a recency half-life 1 year | +0.8% | +0.1 pp | No (worse) |
+| H3b recency half-life 2 years | +0.2% | +0.0 pp | No (worse) |
+| H4 add D-1 24-hour shape | -0.7% | -0.2 pp | No (< 1%) |
+| H6 train from 2023 | +1.4% | -0.8 pp | No (worse) |
+
+Only H1 was adopted, so no combination step was needed. **H5** (blend on top of the H1 trees): the best
+battery capture was 93.9% at 60% trees (+0.7 pp) but with MAE 6.1% worse; at 90% trees MAE was within
+0.1% but capture rose only 0.1 pp. No weight met both conditions: not adopted.
+
+### Test year (run once with the round-2 choice)
+
+| Model | MAE | Battery capture | £ per battery per year |
+|---|---|---|---|
+| Naive: same hour yesterday | 20.79 | 79.0% | 169 |
+| Round-1 headline | 10.27 | 92.9% | 199 |
+| **Round-2 model (round 1 without imbalance inputs)** | **10.34** | 93.0% | 199 |
+
+Diebold-Mariano, round 2 vs round 1: p = 0.32 (no detectable difference); vs naive: p < 0.0001.
+
+### Conclusions
+
+- The round-1 model was not under-tuned: bigger trees, yesterday's full price shape and recency
+  weighting each moved the validation error by under 1%.
+- The 2021-22 crisis years are worth training on (dropping them made things worse): in price / gas
+  terms they still teach the model useful patterns.
+- The imbalance inputs can be dropped with no loss of accuracy, removing the messiest data source.
+- H3 failing prompted a follow-up on the low bias (about -£2/MWh): it is not the model lagging the
+  market. On test days when gas rose by more than 3% after the model's gas input (gas day D-3, 7-day
+  mean), forecasts were £3.9/MWh too low on average, against £0.5 when gas fell. The bias comes mainly
+  from the gas input's lag in a rising market (plus some right-skew from spikes), so the remedy is
+  fresher gas data, not a modelling change.

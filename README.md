@@ -57,6 +57,7 @@ the current year's data until the next default run.)
 | `evaluate.py` | MAE, RMSE, bias, relative MAE, Diebold-Mariano test |
 | `battery.py` | Battery value of a forecast (linear-program schedule, capture rate) |
 | `forecast.py` | Command line forecast of one delivery day |
+| `experiments.py` | Round 2: pre-registered hypotheses (`docs/round2_hypotheses.md`) |
 | `plots.py` | Charts used in the notebook |
 
 ## Key terms
@@ -333,15 +334,38 @@ retrained monthly, all choices frozen on the validation year (`results/`, explai
   (all three together beat each alone; imbalance prices alone made things worse).
 - Forecast residual demand is by far the most important input (shuffling it raises the MAE by about
   £11/MWh). Errors are largest at midday (solar) and at the 17:00-18:00 peak. The trees are about £2 too
-  low on average (in 10 of 13 months); the most expensive 5% of hours are under-predicted by about
-  £11/MWh on average and account for about a quarter of that bias.
+  low on average (in 10 of 13 months), mainly because the gas input (gas day D-3) lags a rising gas
+  market: on days when gas then rose by more than 3% the forecasts were £3.9/MWh too low, against
+  £0.5 when it fell (see round 2). Spikes add to it: the most expensive 5% of hours are
+  under-predicted by about £11/MWh on average.
 - Battery value: a 5 kW / 10 kWh battery scheduled on the learned models' forecasts earns about
   £25-33 a year more in the day-ahead market than on the naive forecast, out of £214 possible. The
   average of Lasso and trees captures the most (94.2%) although the trees have the lower MAE.
 
-Limitations and next steps are listed at the end of the notebook (target proxy, gas data lag, no
-carbon price, spike under-prediction and bias, limited search over inputs and settings, imbalance
-data revisions; DA2 and imbalance forecasting as extensions).
+### Round 2: hypotheses tested
+
+Studying the round-1 results raised six hypotheses. They were written down with fixed decision rules
+and committed before anything was run (`docs/round2_hypotheses.md`, run by
+`python -m gb_da_forecast.experiments`), decided on the validation year only, and the test year was
+run once more:
+
+| Hypothesis (prompted by) | Validation effect | Outcome |
+|---|---|---|
+| H1 Drop imbalance inputs (they hurt alone) | MAE +0.0%, battery -0.1 pp | **Adopted**: simpler, same accuracy |
+| H2 Bigger trees (best settings at grid edge) | Best: MAE -0.6% | Rejected: below the 1% threshold |
+| H3 Weight recent data more (low bias) | MAE +0.2% to +0.8% | Rejected; the bias traced to the gas input's lag instead |
+| H4 Yesterday's 24-hour price shape (LEAR uses it) | MAE -0.7% | Rejected: below the 1% threshold |
+| H5 Trees/Lasso blend (best battery value) | Battery up to +0.7 pp, but MAE +6% | Rejected: fails the accuracy condition |
+| H6 Train only from 2023 (crisis distorts) | MAE +1.4%, battery -0.8 pp | Rejected: the crisis years help |
+
+Test year: the round-2 model (round 1 minus the imbalance inputs) scores MAE £10.34 vs £10.27 and
+battery capture 93.0% vs 92.9%; the difference is not significant (Diebold-Mariano p = 0.32). The model
+was not under-tuned, and it can be simplified without losing accuracy. The detailed numbers above
+refer to the round-1 model.
+
+Limitations and next steps are listed at the end of the notebook (target proxy, gas data lag as the
+main source of bias, no carbon price, spike under-prediction, imbalance data revisions; DA2 and
+imbalance forecasting as extensions).
 
 ## References
 
