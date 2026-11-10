@@ -1,0 +1,11 @@
+inputs,target,MAE
+base,raw,9.849060131468068
+base,ratio,9.559156257132308
+base+continental,raw,9.468390728573262
+base+continental,ratio,9.293930640371972
+base+imbalance,raw,9.852568980795827
+base+imbalance,ratio,9.638124023533129
+base+gen_mix,raw,9.429438025548041
+base+gen_mix,ratio,9.398266212391688
+base+all,raw,9.353710215545362
+base+all,ratio,9.177474251861998

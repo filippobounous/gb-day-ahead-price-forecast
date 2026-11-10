@@ -18,7 +18,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-notebook = ["ipykernel"]
+notebook = ["ipykernel", "nbformat", "nbconvert"]
+dev = ["pytest"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

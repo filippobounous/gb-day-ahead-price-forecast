@@ -1,0 +1,48 @@
+{
+  "validation_period": [
+    "2024-11-01",
+    "2025-10-31"
+  ],
+  "test_period": [
+    "2025-11-01",
+    "2026-11-10"
+  ],
+  "choices": {
+    "groups_raw": [
+      "calendar",
+      "fundamentals",
+      "gas",
+      "price_lags",
+      "continental",
+      "imbalance",
+      "gen_mix"
+    ],
+    "groups_ratio": [
+      "calendar",
+      "fundamentals",
+      "gas",
+      "price_lags",
+      "continental",
+      "imbalance",
+      "gen_mix"
+    ],
+    "gbm_params_raw": {
+      "loss": "absolute_error",
+      "learning_rate": 0.05,
+      "max_iter": 600,
+      "max_leaf_nodes": 63,
+      "min_samples_leaf": 40
+    },
+    "gbm_params_ratio": {
+      "loss": "squared_error",
+      "learning_rate": 0.05,
+      "max_iter": 600,
+      "max_leaf_nodes": 63,
+      "min_samples_leaf": 40
+    },
+    "best_lasso": "lasso_ratio",
+    "best_gbm": "gbm_ratio",
+    "headline": "gbm_ratio"
+  },
+  "runtime_minutes": 22.7
+}

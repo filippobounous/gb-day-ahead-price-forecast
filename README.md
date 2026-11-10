@@ -7,10 +7,16 @@ be done at 09:00 UK time on D-1, 20 minutes before the EPEX 60-minute auction (D
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[notebook]"
-python -m gb_da_forecast.collect      # download all raw data into data/raw/ (~20 min the first time)
-python -m gb_da_forecast.data.check   # coverage and sanity checks
+pip install -e ".[notebook,dev]"
+python -m gb_da_forecast.collect            # download all raw data into data/raw/ (~20 min the first time)
+python -m gb_da_forecast.data.check         # coverage and sanity checks
+python -m gb_da_forecast.backtest           # validation + test backtest, writes results/ (~25 min)
+python -m gb_da_forecast.forecast 2026-11-11  # forecast one delivery day as at 09:00 the day before
+python -m pytest -q                         # tests of the time logic, as-of selection, battery, features
 ```
+
+Then open `notebooks/walkthrough.ipynb`: a step-by-step explanation of the data, the models and the
+results, with a "how to read it" note under every chart.
 
 Re-running `collect` only fetches what is missing or not yet final. `--only <source ...>` and
 `--start YYYY-MM-DD` restrict it. (A run with an `--end` earlier than before temporarily shrinks
@@ -27,6 +33,13 @@ the current year's data until the next default run.)
 | `data/_store.py`, `data/_http.py` | Plumbing: chunked, resumable downloads with retries |
 | `collect.py` | Command line entry point for downloading |
 | `data/check.py` | Coverage, gap and time-basis checks |
+| `features.py` | The modelling table: one row per delivery hour, every input as known at the cutoff |
+| `models.py` | Naive baselines, Lasso (one model per hour), gradient-boosted trees, their average |
+| `backtest.py` | Walk-forward backtest: validation year for choices, untouched test year |
+| `evaluate.py` | MAE, RMSE, bias, relative MAE, Diebold-Mariano test |
+| `battery.py` | Battery value of a forecast (linear-program schedule, capture rate) |
+| `forecast.py` | Command line forecast of one delivery day |
+| `plots.py` | Charts used in the notebook |
 
 ## Key terms
 
@@ -201,6 +214,106 @@ rather than back, but that series is not freely available; past SAP is the proxy
   system would read National Gas's data portal directly.
 - Continental prices are in EUR and no exchange rate is collected.
 
+## Modelling
+
+### Inputs
+
+One row per delivery hour (`features.py`), every input as known at 09:00 UK on D-1:
+
+| Group | Inputs | Why |
+|---|---|---|
+| Calendar | Hour, day of week, bank holiday, month, smooth day-of-year | Daily and weekly patterns |
+| Fundamentals | Demand, transmission wind, embedded solar and wind forecasts for the hour; residual demand (demand minus transmission wind) and its daily mean/min/max | How far up the merit order each hour goes |
+| Gas | Gas SAP of gas day D-3; its 7-day mean (gas days D-9 to D-3) | Cost of the price-setting plant |
+| Price lags | Same hour on delivery days D-1, D-2, D-7; D-1's mean, min, max and last hour | Persistence; captures outages and interconnector conditions we cannot see |
+| Optional context | Continental prices of D-1; imbalance price and generation mix of the last 24 h available | Kept only if they help on the validation year |
+
+Residual demand subtracts only *transmission* wind: NESO's national demand is measured on the
+transmission network, so embedded solar and wind already reduce it. The ratio target divides by the
+7-day mean gas price rather than a single day, because single-day SAP occasionally collapses (an LNG
+glut in 2022 took it to £4/MWh).
+
+### Models
+
+A ladder from simple to flexible; each rung must beat the one below to justify itself.
+
+| Model | How it works | Pros | Cons |
+|---|---|---|---|
+| Naive baselines | Same hour yesterday; same hour last week; yesterday x gas change | Free, hard to beat, the standard bar | Ignore weather and demand |
+| Lasso (one per hour) | Weighted sum of inputs; the penalty sets useless weights to zero | Readable, fast; the field's "LEAR" benchmark [8, 9] | Straight lines only |
+| Gradient-boosted trees | Hundreds of small if-then trees, each correcting the previous ones | Learns the merit-order bend and interactions; handles missing inputs; strongest on tabular data [10, 11] | Cannot extrapolate beyond the training range |
+| Average | Mean of the best Lasso and best trees | Combining forecasts often beats each | Less readable |
+
+Not used: neural networks (too little data, about 45,000 hourly rows, to repay their tuning cost and
+opacity), ARIMA-type models (poor use of outside drivers such as wind forecasts), pre-trained
+time-series foundation models (weak with outside drivers, opaque). scikit-learn's
+`HistGradientBoostingRegressor` implements the same algorithm family as LightGBM without a system
+dependency.
+
+### Why price / gas
+
+When a gas plant sets the price, price ~ heat rate x gas price + carbon cost, so price / gas is
+roughly the **implied market heat rate** of the price-setting plant: a standard industry metric [14],
+the one-fuel version of the structural bid-stack view of power prices [12], and what an econometric
+model's gas coefficient estimates in a gas-dominated market [13]. It depends on residual demand and
+the hour, not on the gas level: the yearly median stayed between 2.6 and 2.9 while yearly mean prices
+ranged from £73 to £204/MWh. Predicting the ratio (with all money-valued inputs also divided by gas)
+lets the trees learn something stable instead of having to extrapolate to new price levels; the
+prediction is multiplied back by the gas price. Alternatives (raw price, spark spread, log price,
+asinh [15], scaling by recent prices) are discussed in the notebook; raw price and the ratio are both
+run and the validation year decides.
+
+### Testing
+
+Walk-forward backtest (`backtest.py`): each forecast period is predicted by a model trained only on
+delivery days before it.
+
+| Period | Used for | Retraining |
+|---|---|---|
+| Sept 2021 - Oct 2024 | Training only | - |
+| Validation year (Nov 2024 - Oct 2025) | Every choice: optional inputs, tree settings, headline model | Every 3 months |
+| Test year (Nov 2025 - latest day) | Final evaluation, choices frozen, touched once | Every month |
+
+Metrics: MAE, RMSE, bias, MAE relative to the naive "same hour yesterday" forecast, a Diebold-Mariano
+test [16] for whether differences are larger than chance, and the **battery value**: a 5 kW / 10 kWh
+home battery (90% round-trip efficiency, at most one cycle a day) is scheduled on each forecast by a
+small linear program and settled at actual prices; the capture rate is its profit as a share of the
+perfect-foresight profit. It rewards getting the cheap and expensive hours right, which is what a
+battery optimiser needs and MAE does not measure.
+
+### Results
+
+Test year 1 Nov 2025 to 10 Nov 2026 (375 delivery days), forecasts as at 09:00 UK on D-1, models
+retrained monthly, all choices frozen on the validation year (`results/`, explained step by step in
+`notebooks/walkthrough.ipynb`):
+
+| Model | MAE (£/MWh) | RMSE | vs naive (MAE) | Battery capture | £ per battery per year |
+|---|---|---|---|---|---|
+| Naive: same hour yesterday | 20.79 | 33.94 | - | 79.0% | 169 |
+| Naive: same hour last week | 27.41 | 42.89 | 32% worse | 79.8% | 171 |
+| Lasso (price) | 14.40 | 20.58 | 31% better | 90.7% | 194 |
+| Lasso (price / gas) | 12.90 | 18.60 | 38% better | 92.5% | 198 |
+| Boosted trees (price) | 11.24 | 16.84 | 46% better | 93.4% | 200 |
+| **Boosted trees (price / gas): headline** | **10.37** | 15.77 | **50% better** | 93.1% | 199 |
+| Average of Lasso and trees | 10.68 | 15.71 | 49% better | 94.2% | 202 |
+| Perfect foresight | - | - | - | 100% | 214 |
+
+- The headline model was chosen on the validation year before the test year was touched; its MAE
+  advantage is statistically significant (Diebold-Mariano, p < 0.001) over every model except the
+  average of Lasso and trees (p = 0.11).
+- Price / gas beats raw price in both model families, as the merit-order economics suggested.
+- All settings and input choices were made on the validation year (headline validation MAE £9.02 vs
+  naive £19.16). All optional input groups were kept; tree settings mattered much less than inputs
+  and target form.
+- Forecast residual demand is by far the most important input (shuffling it raises the MAE by about
+  £14/MWh). Errors are largest at midday (solar) and at the 17:00-18:00 peak; the most expensive 5% of
+  hours are under-predicted by about £9.5/MWh on average.
+- Battery value: a 5 kW / 10 kWh battery scheduled on the model forecasts earns about £25-33 a year
+  more in the day-ahead market than on the naive forecast, out of £214 possible.
+
+Limitations and next steps are listed at the end of the notebook (target proxy, gas data lag, no
+carbon price, spike under-prediction, light tuning; DA2 and imbalance forecasting as extensions).
+
 ## References
 
 1. UCL (2022), *Electricity prices dictated by gas producers who provide less than half of UK electricity*. https://www.ucl.ac.uk/news/headlines/2022/sep/electricity-prices-dictated-gas-producers-who-provide-less-half-uk-electricity
@@ -210,3 +323,12 @@ rather than back, but that series is not freely available; past SAP is the proxy
 5. Nord Pool, *About the day-ahead GB auction* (gate closure 09:50, results by 10:00). https://support.nordpoolgroup.com/support/solutions/articles/8000088463-about-the-day-ahead-gb-auction
 6. NESO, *Day-Ahead Power Exchange prices (Nord Pool)*. https://www.neso.energy/data-portal/day-ahead-power-exchange-prices-nordpool
 7. Elexon, *CP1359* (products included in the EPEX market index). https://assets.elexon.co.uk/wp-content/uploads/sites/11/2012/02/28171703/CP1359.pdf
+8. Ziel & Weron (2018), *Day-ahead electricity price forecasting with high-dimensional structures: Univariate vs. multivariate modeling frameworks*, Energy Economics 70, 396-420.
+9. Lago, Marcjasz, De Schutter & Weron (2021), *Forecasting day-ahead electricity prices: A review of state-of-the-art algorithms, best practices and an open-access benchmark*, Applied Energy 293, 116983.
+10. Makridakis, Spiliotis & Assimakopoulos (2022), *M5 accuracy competition: Results, findings, and conclusions*, International Journal of Forecasting 38(4), 1346-1364.
+11. Grinsztajn, Oyallon & Varoquaux (2022), *Why do tree-based models still outperform deep learning on typical tabular data?*, NeurIPS Datasets and Benchmarks. https://arxiv.org/abs/2207.08815
+12. Coulon & Howison (2009), *Stochastic behaviour of the electricity bid stack: from fundamental drivers to power prices*, Journal of Energy Markets. https://people.maths.ox.ac.uk/~howison/papers/CoulonHowison211008.pdf
+13. Ghelasi & Ziel (2024), *From day-ahead to mid and long-term horizons with econometric electricity price forecasting models*, arXiv:2406.00326. https://arxiv.org/abs/2406.00326
+14. California Public Utilities Commission (2019), *Implied Market Heat Rate and Electric Cost Overcharge in 2018*. https://www.cpuc.ca.gov/-/media/cpuc-website/files/uploadedfiles/cpucwebsite/content/news_room/newsupdates/2019/imhr-and-surplus-cost-analysis-6-17-2019-v2-.pdf
+15. Uniejewski, Weron & Ziel (2018), *Variance stabilizing transformations for electricity spot price forecasting*, IEEE Transactions on Power Systems.
+16. Diebold & Mariano (1995), *Comparing predictive accuracy*, Journal of Business & Economic Statistics 13(3), 253-263.
