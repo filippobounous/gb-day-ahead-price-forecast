@@ -1,6 +1,6 @@
 """Walk-forward backtest: simulate forecasting every delivery day at 09:00 D-1.
 
-    python -m gb_da_forecast.backtest     # ~25 minutes; writes everything to results/
+    python -m gb_da_forecast.backtest     # 25-100 minutes depending on the machine; writes results/
 
 Protocol, so that the reported test results are honest:
 

@@ -18,7 +18,7 @@ import json
 import pandas as pd
 
 from .backtest import RESULTS_DIR, _make
-from .config import UK_TZ
+from .config import GAS_SAP_LAG_DAYS, UK_TZ
 from .features import FEATURE_GROUPS, build_dataset
 
 
@@ -35,6 +35,10 @@ def forecast_day(day: dt.date) -> pd.DataFrame:
     if missing.any():
         print(f"Warning: some inputs are missing for {day} (data not collected up to the cutoff?):")
         print(missing[missing > 0].round(2).to_string())
+    gas_age = int(rows["gas_age_days"].iloc[0])
+    if gas_age > GAS_SAP_LAG_DAYS:
+        print(f"Warning: the latest gas price available is {gas_age} days old (expected {GAS_SAP_LAG_DAYS}); "
+              "the ONS series is published weekly. A live system should read National Gas directly.")
 
     model = _make(choices["headline"], choices)().fit(train)
     out = pd.DataFrame(

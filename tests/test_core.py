@@ -134,3 +134,9 @@ def test_features_use_only_information_from_before_the_cutoff():
     # gas: gas day D-3
     gas = load("gas_sap").set_index("gas_day")["sap_gbp_mwh"]
     assert rows["gas_sap"].iloc[0] == pytest.approx(gas[day - dt.timedelta(days=3)])
+
+    # outturn windows end before the cutoff, and are fresh (late re-publications must not freeze them)
+    days = df.groupby("delivery_day")[["imb_age_h", "gen_age_h"]].first()
+    assert (days >= 0).all().all()
+    assert (days["gen_age_h"] <= 2).mean() > 0.99
+    assert (days["imb_age_h"] <= 48).mean() > 0.97  # >48 h only where Elexon re-published late

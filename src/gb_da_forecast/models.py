@@ -6,9 +6,11 @@ the 09:00 D-1 cutoff, so a model can never see the future through its inputs.
 
     NaiveModel   no learning: copy an earlier price ("same hour yesterday", "same hour last week",
                  "yesterday scaled by the change in gas"). The bar every model must clear.
-    LassoModel   linear regression with a Lasso penalty, one model per hour of the day; the
-                 "LEAR" benchmark of the price-forecasting literature (Ziel & Weron 2018,
-                 Lago et al. 2021). Readable: every input gets one weight.
+    LassoModel   linear regression with a Lasso penalty, one model per hour of the day. A simplified
+                 version of the "LEAR" benchmark of the price-forecasting literature (Ziel & Weron
+                 2018, Lago et al. 2021), which additionally uses asinh-transformed prices, all 24
+                 hourly prices of several past days and multiple training windows. Readable: every
+                 input gets one weight.
     GBMModel     gradient-boosted decision trees (scikit-learn's HistGradientBoostingRegressor,
                  the same algorithm family as LightGBM). Learns bends and interactions, e.g.
                  the merit-order hockey stick, and handles missing inputs natively.
@@ -16,9 +18,10 @@ the 09:00 D-1 cutoff, so a model can never see the future through its inputs.
 Target forms (``target``):
     "raw"    predict the price in £/MWh.
     "ratio"  predict price / gas price (the market's implied heat rate), then multiply back.
-             All money-valued inputs are divided by the gas price too, so the model works in
-             "units of gas" and does not need to extrapolate when the gas price moves to a level
-             it has not seen (see README, "Why price / gas").
+             All price-valued inputs (lagged, continental and imbalance prices) are divided by the
+             gas price too, so the model works in "units of gas" and has much less need to
+             extrapolate when the gas price moves to a level it has not seen. The gas inputs
+             themselves stay in £/MWh (see README, "Why price / gas").
 """
 
 from __future__ import annotations
@@ -115,8 +118,9 @@ class LassoModel:
         return out
 
     def coefficients(self, hour: int) -> pd.Series:
-        """Weights of the hour's model on standardised inputs: the change in the target (in model
-        units) for a one-standard-deviation change in the input. Zero means the Lasso dropped it."""
+        """Weights of the hour's model. For numeric inputs: the change in the target (in model
+        units) for a one-standard-deviation increase. For day-of-week indicators (dow_1..dow_6):
+        the difference from Monday. Zero means the Lasso dropped the input."""
         pipe = self.models[hour]
         names = pipe.named_steps["prep"].get_feature_names_out()
         return pd.Series(pipe.named_steps["lasso"].coef_, index=[n.split("__", 1)[1] for n in names])

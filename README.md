@@ -10,7 +10,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[notebook,dev]"
 python -m gb_da_forecast.collect            # download all raw data into data/raw/ (~20 min the first time)
 python -m gb_da_forecast.data.check         # coverage and sanity checks
-python -m gb_da_forecast.backtest           # validation + test backtest, writes results/ (~25 min)
+python -m gb_da_forecast.backtest           # validation + test backtest, writes results/ (25-100 min, machine-dependent)
 python -m gb_da_forecast.forecast 2026-11-11  # forecast one delivery day as at 09:00 the day before
 python -m pytest -q                         # tests of the time logic, as-of selection, battery, features
 ```
@@ -146,7 +146,7 @@ delivery day 2 Mar 2023 (23:00 1 Mar to 23:00 2 Mar UTC):
 | gov.uk | Bank holidays | Calendar | Known in advance |
 | N2EX (target) | Hourly day-ahead price | Lagged prices | Delivery days up to and including D-1 (cleared on D-2) |
 | Elexon `FUELHH`, `MID`; PV_Live | Generation mix and interconnector flows, short-term traded price, solar outturn | Lagged context | Up to ~08:30 on D-1 |
-| Elexon system prices | Imbalance price | Lagged context | Only periods >25 h old: stored values are a later settlement run |
+| Elexon system prices | Imbalance price | Lagged context | Only periods whose stored version was published by the cutoff: ~1 h old before 2024, ~25 h from 2024 (stored values are a later settlement run) |
 | energy-charts | FR, NL, BE, NO2, DK1 (+ DE-LU) day-ahead prices | Lagged context | Delivery days up to D-1 (they clear ~11:00 UK, after GB's auction) |
 | Open-Meteo | Weather at 9 onshore and offshore points | Exploration only | Not as-of: see below |
 
@@ -240,7 +240,7 @@ A ladder from simple to flexible; each rung must beat the one below to justify i
 | Model | How it works | Pros | Cons |
 |---|---|---|---|
 | Naive baselines | Same hour yesterday; same hour last week; yesterday x gas change | Free, hard to beat, the standard bar | Ignore weather and demand |
-| Lasso (one per hour) | Weighted sum of inputs; the penalty sets useless weights to zero | Readable, fast; the field's "LEAR" benchmark [8, 9] | Straight lines only |
+| Lasso (one per hour) | Weighted sum of inputs; the penalty sets useless weights to zero | Readable, fast; a simplified version of the field's "LEAR" benchmark [8, 9] | Straight lines only |
 | Gradient-boosted trees | Hundreds of small if-then trees, each correcting the previous ones | Learns the merit-order bend and interactions; handles missing inputs; strongest on tabular data [10, 11] | Cannot extrapolate beyond the training range |
 | Average | Mean of the best Lasso and best trees | Combining forecasts often beats each | Less readable |
 
@@ -291,28 +291,31 @@ retrained monthly, all choices frozen on the validation year (`results/`, explai
 |---|---|---|---|---|---|
 | Naive: same hour yesterday | 20.79 | 33.94 | - | 79.0% | 169 |
 | Naive: same hour last week | 27.41 | 42.89 | 32% worse | 79.8% | 171 |
-| Lasso (price) | 14.40 | 20.58 | 31% better | 90.7% | 194 |
-| Lasso (price / gas) | 12.90 | 18.60 | 38% better | 92.5% | 198 |
-| Boosted trees (price) | 11.24 | 16.84 | 46% better | 93.4% | 200 |
-| **Boosted trees (price / gas): headline** | **10.37** | 15.77 | **50% better** | 93.1% | 199 |
-| Average of Lasso and trees | 10.68 | 15.71 | 49% better | 94.2% | 202 |
+| Lasso (price) | 14.41 | 20.61 | 31% better | 90.7% | 194 |
+| Lasso (price / gas) | 12.87 | 18.57 | 38% better | 92.6% | 198 |
+| Boosted trees (price) | 11.70 | 17.41 | 44% better | 92.8% | 199 |
+| **Boosted trees (price / gas): headline** | **10.27** | 15.59 | **51% better** | 92.9% | 199 |
+| Average of Lasso and trees | 10.69 | 15.72 | 49% better | 94.2% | 202 |
 | Perfect foresight | - | - | - | 100% | 214 |
 
-- The headline model was chosen on the validation year before the test year was touched; its MAE
-  advantage is statistically significant (Diebold-Mariano, p < 0.001) over every model except the
-  average of Lasso and trees (p = 0.11).
+- The headline model was chosen on the validation year (MAE £9.12 vs naive £19.16) before the test
+  year was touched; on the test year its MAE advantage is statistically significant over every other
+  model (Diebold-Mariano: p < 0.001, and p = 0.03 against the average of Lasso and trees).
 - Price / gas beats raw price in both model families, as the merit-order economics suggested.
-- All settings and input choices were made on the validation year (headline validation MAE £9.02 vs
-  naive £19.16). All optional input groups were kept; tree settings mattered much less than inputs
-  and target form.
+- On the validation year, tree settings, input groups and target form each moved the MAE by similar,
+  modest amounts (up to £0.3-1.0, £0.6 and £0.3/MWh respectively). All optional input groups were kept
+  (all three together beat each alone; imbalance prices alone made things worse).
 - Forecast residual demand is by far the most important input (shuffling it raises the MAE by about
-  £14/MWh). Errors are largest at midday (solar) and at the 17:00-18:00 peak; the most expensive 5% of
-  hours are under-predicted by about £9.5/MWh on average.
-- Battery value: a 5 kW / 10 kWh battery scheduled on the model forecasts earns about £25-33 a year
-  more in the day-ahead market than on the naive forecast, out of £214 possible.
+  £11/MWh). Errors are largest at midday (solar) and at the 17:00-18:00 peak. The trees are about £2 too
+  low on average (in 10 of 13 months); the most expensive 5% of hours are under-predicted by about
+  £11/MWh on average and account for about a quarter of that bias.
+- Battery value: a 5 kW / 10 kWh battery scheduled on the learned models' forecasts earns about
+  £25-33 a year more in the day-ahead market than on the naive forecast, out of £214 possible. The
+  average of Lasso and trees captures the most (94.2%) although the trees have the lower MAE.
 
 Limitations and next steps are listed at the end of the notebook (target proxy, gas data lag, no
-carbon price, spike under-prediction, light tuning; DA2 and imbalance forecasting as extensions).
+carbon price, spike under-prediction and bias, limited search over inputs and settings, imbalance
+data revisions; DA2 and imbalance forecasting as extensions).
 
 ## References
 

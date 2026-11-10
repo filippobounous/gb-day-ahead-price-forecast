@@ -7,7 +7,9 @@ For each delivery day:
   capture rate = realised profit / perfect-foresight profit, summed over all days.
 
 A forecast that gets the daily *shape* right (which hours are cheap and which are dear) scores
-well even if its level is off; average error (MAE) cannot see that distinction.
+well even if its level is off; average error (MAE) cannot see that distinction. (Scaling a whole
+day by one factor leaves the schedule unchanged; a constant offset can change it slightly, because
+with efficiency losses the battery sells less energy than it buys.)
 
 The planning step is a small linear program (scipy's HiGHS solver). Battery: 5 kW / 10 kWh
 (a 2-hour home battery), 90% round-trip efficiency, at most one full cycle per delivery day,

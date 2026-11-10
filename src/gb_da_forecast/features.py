@@ -166,22 +166,42 @@ def _continental(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _last_24h_as_of(
-    df: pd.DataFrame, series: pd.DataFrame, available_col: str, cols: list[str], how: str = "mean"
+    df: pd.DataFrame,
+    series: pd.DataFrame,
+    available_col: str,
+    cols: list[str],
+    how: str = "mean",
+    age_col: str | None = None,
 ) -> pd.DataFrame:
-    """Rolling 24-hour statistics of outturn data, taken as the latest value available at each cutoff.
+    """24-hour statistics of outturn data as known at each delivery day's cutoff.
 
     ``series`` is indexed by period start (UTC) and has an ``available_col`` saying when each
-    period's value was published; only values published by the cutoff are used.
+    period's value was published. For each cutoff: keep only the periods published by then, find
+    the latest of them, and aggregate the kept periods in the 24 hours ending there. Filtering
+    period by period matters: some periods are re-published months later, and must neither be
+    used early nor hold the window back. ``age_col`` records how old the window's end was at the
+    cutoff (hours), as a diagnostic.
     """
-    rolled = getattr(series[cols].rolling("24h"), how)()
-    rolled[available_col] = series[available_col].cummax()  # published-by time of the whole window
-    rolled = rolled.dropna(subset=[available_col]).sort_values(available_col)
-    cutoffs = pd.DataFrame({"delivery_day": sorted(df["delivery_day"].unique())})
-    cutoffs["cutoff"] = forecast_cutoff(pd.Series(pd.to_datetime(cutoffs["delivery_day"])))
-    merged = pd.merge_asof(
-        cutoffs.sort_values("cutoff"), rolled, left_on="cutoff", right_on=available_col, direction="backward"
-    )
-    return df.merge(merged[["delivery_day", *cols]], on="delivery_day", how="left")
+    starts = series.index.to_numpy()
+    available = series[available_col].to_numpy()
+    values = series[cols].to_numpy(float)
+    agg = np.nanmean if how == "mean" else np.nanmax
+    days = sorted(df["delivery_day"].unique())
+    cutoffs = forecast_cutoff(pd.Series(pd.to_datetime(days))).dt.tz_localize(None).to_numpy()
+    starts_naive = pd.DatetimeIndex(starts).tz_localize(None).to_numpy()
+    available_naive = pd.DatetimeIndex(available).tz_localize(None).to_numpy()
+    rows = []
+    for day, cutoff in zip(days, cutoffs):
+        known = available_naive <= cutoff
+        row = {"delivery_day": day}
+        if known.any():
+            end = starts_naive[known].max()
+            window = known & (starts_naive > end - np.timedelta64(24, "h")) & (starts_naive <= end)
+            row |= dict(zip(cols, agg(values[window], axis=0)))
+            if age_col:
+                row[age_col] = (cutoff - end) / np.timedelta64(1, "h")
+        rows.append(row)
+    return df.merge(pd.DataFrame(rows), on="delivery_day", how="left")
 
 
 def _imbalance(df: pd.DataFrame) -> pd.DataFrame:
@@ -194,7 +214,7 @@ def _imbalance(df: pd.DataFrame) -> pd.DataFrame:
         },
         index=pd.DatetimeIndex(sp["startTime"]),
     )
-    out = _last_24h_as_of(df, series, "created", ["imb_price_24h", "imb_niv_24h"])
+    out = _last_24h_as_of(df, series, "created", ["imb_price_24h", "imb_niv_24h"], age_col="imb_age_h")
     peak = series.rename(columns={"imb_price_24h": "imb_price_24h_max"})
     return _last_24h_as_of(out, peak, "created", ["imb_price_24h_max"], how="max")
 
@@ -213,7 +233,7 @@ def _gen_mix(df: pd.DataFrame) -> pd.DataFrame:
             "published": published,
         }
     ).sort_index()
-    return _last_24h_as_of(df, series, "published", GEN_MIX)
+    return _last_24h_as_of(df, series, "published", GEN_MIX, age_col="gen_age_h")
 
 
 def build_dataset(until: dt.date | None = None) -> pd.DataFrame:
